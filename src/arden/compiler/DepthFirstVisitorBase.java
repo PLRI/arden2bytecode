@@ -27,25 +27,19 @@
 
 package arden.compiler;
 
-/**
- * ClassLoader used for loading the compiled classes without having to save them
- * to disk.
+import arden.compiler.analysis.DepthFirstAdapter;
+import arden.compiler.node.Node;
+
+/** 
+ * Base class for depth first visitors. Throws an exception for unknown nodes.
  * 
- * @author Daniel Grunwald
+ * @author Hannes Flicka
+ *
  */
-final class AnonymousInMemoryClassLoader extends ClassLoader {
-	byte[] data;
-	Class<?> loadedClass;
+class DepthFirstVisitorBase extends DepthFirstAdapter {
 
-	public AnonymousInMemoryClassLoader(byte[] data) {
-		this.data = data;
-	}
-
-	protected synchronized Class<?> findClass(String name) throws ClassNotFoundException {
-		if (loadedClass == null) {
-			loadedClass = defineClass(null, data, 0, data.length);
-			data = null;
-		}
-		return loadedClass;
+	@Override
+	public void defaultCase(Node node) {
+		throw new RuntimeException("Unsupported node: " + node.getClass().getName());
 	}
 }

@@ -29,6 +29,9 @@ package arden.runtime;
 
 import java.util.Date;
 
+import arden.runtime.events.EvokeEvent;
+import arden.runtime.events.MappedEvokeEvent;
+
 /**
  * Describes the environment in which a Medical Logic Module is executed.
  * 
@@ -57,6 +60,11 @@ public abstract class ExecutionContext {
 	/** Gets a value represents the message of a MESSAGE variable. */
 	public ArdenValue getMessage(String mapping) {
 		return new ArdenString(mapping);
+	}
+	
+	/** Gets an event defined with the EVENT{mapping} statement */
+	public EvokeEvent getEvent(String mapping) {
+		return new MappedEvokeEvent(mapping);
 	}
 
 	/**

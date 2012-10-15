@@ -44,29 +44,25 @@ import java.util.regex.Pattern;
 
 import uk.co.flamingpenguin.jewel.cli.ArgumentValidationException;
 import uk.co.flamingpenguin.jewel.cli.CliFactory;
-import arden.compiler.CompiledMlm;
 import arden.compiler.Compiler;
 import arden.compiler.CompilerException;
-import arden.compiler.LoadableCompiledMlm;
-import arden.runtime.ArdenList;
-import arden.runtime.ArdenNumber;
-import arden.runtime.ArdenString;
+import arden.compiler.CompiledMlm;
+import arden.constants.ConstantParser;
+import arden.constants.ConstantParser.ConstantParserException;
 import arden.runtime.ArdenValue;
 import arden.runtime.ExecutionContext;
+import arden.runtime.ExpressionHelpers;
 import arden.runtime.MedicalLogicModule;
 import arden.runtime.StdIOExecutionContext;
 import arden.runtime.jdbc.JDBCExecutionContext;
 
 public class MainClass {
-	private final static String MLM_FILE_EXTENSION = ".mlm";
+	public final static String MLM_FILE_EXTENSION = ".mlm";
 	
 	private final static String COMPILED_MLM_FILE_EXTENSION = ".class";
 
 	private final static Pattern JAVA_CLASS_NAME = 
 		Pattern.compile("[A-Za-z$_][A-Za-z0-9$_]*(?:\\.[A-Za-z$_][A-Za-z0-9$_]*)*");
-	
-	private final static Pattern ARDEN_SYNTAX_NUMBER = 
-		Pattern.compile("[-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?");
 	
 	private CommandLineOptions options;
 	
@@ -91,8 +87,8 @@ public class MainClass {
 					if (classFile.exists()) {
 						inputFiles.add(classFile);
 					} else {
-						System.err.println("Class file " + classFileName 
-								+ " does not exist.");
+						System.err.println("File " + filePath + " and class file " + classFileName 
+								+ " do not exist.");
 					}
 				} else {
 					System.err.println("File \"" + filePath 
@@ -144,26 +140,30 @@ public class MainClass {
 		}
 	}
 	
-	private ArdenValue[] runMlm(MedicalLogicModule mlm) {
+	private ArdenValue[] getArguments() {
 		ArdenValue[] arguments = null;
 		if (options.isArguments()) {
-			List<ArdenValue> argList = new LinkedList<ArdenValue>();
+			ArdenValue ardenArg = null;
 			for (String arg : options.getArguments()) {
-				Matcher m = ARDEN_SYNTAX_NUMBER.matcher(arg);
-				if (m.matches()) {
-					argList.add(new ArdenNumber(Double.parseDouble(arg)));
+				ArdenValue parsedArg = null;
+				try {
+					parsedArg = ConstantParser.parse(arg);
+				} catch (ConstantParserException e) {
+					e.printStackTrace();
+				}
+				if (ardenArg == null) {
+					ardenArg = parsedArg;
 				} else {
-					argList.add(new ArdenString(arg));
+					ardenArg = ExpressionHelpers.binaryComma(ardenArg, parsedArg);
 				}
 			}
-			arguments = argList.toArray(new ArdenValue[]{});
-			
-			if (arguments.length > 1) {
-				arguments = new ArdenValue[]{new ArdenList(arguments)};
-			}
+			arguments = new ArdenValue[]{ardenArg};
 		}
-		
-		ExecutionContext context = createExecutionContext();
+		return arguments;
+	}
+	
+	private ArdenValue[] runMlm(MedicalLogicModule mlm, ExecutionContext context) {
+		ArdenValue[] arguments = getArguments();
 		
 		ArdenValue[] result = null;
 		try {
@@ -183,26 +183,48 @@ public class MainClass {
 		return result;
 	}
 	
-	private int runInputFile(File fileToRun) {
-		String filename = fileToRun.getName();
+	public static String getFilenameBase(String filename) {
+		int sepindex = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
+		int fnindex = filename.lastIndexOf('.');
+		if (fnindex < sepindex) {
+			fnindex = -1;
+		}
+		if (fnindex < 0) {
+			return filename.substring(sepindex + 1);
+		}
+		return filename.substring(sepindex + 1, fnindex);	
+	}
+	
+	private MedicalLogicModule getMlmFromFile(File file) {
+		String filename = file.getName();
 		MedicalLogicModule mlm = null;
 		if (filename.endsWith(COMPILED_MLM_FILE_EXTENSION)) {
 			// load compiled mlm (.class file)
 			try {
-				mlm = new LoadableCompiledMlm(fileToRun);
+				mlm = new CompiledMlm(file, getFilenameBase(filename));
 			} catch (IOException e) {
 				System.err.println("Error loading " +
-						fileToRun.getPath());
+						file.getPath());
 				e.printStackTrace();
-				return 1;
+				return null;
 			}
-		} else if (fileToRun.getName().endsWith(MLM_FILE_EXTENSION)) {
+		} else if (file.getName().endsWith(MLM_FILE_EXTENSION)) {
 			// compile .mlm file
-			mlm = compileMlm(fileToRun); 
+			mlm = compileMlm(file); 
 		} else {
-			System.err.println("File \"" + fileToRun.getPath() 
+			System.err.println("File \"" + file.getPath() 
 					+ "\" is neither .class nor .mlm file.");
 			System.err.println("Can't run such a file.");
+			return null;
+		}
+		return mlm;
+	}
+	
+	private int runInputFile(File fileToRun) {
+		ExecutionContext context = createExecutionContext();
+
+		MedicalLogicModule mlm = getMlmFromFile(fileToRun);
+		if (mlm == null) {
 			return 1;
 		}
 		
@@ -212,7 +234,7 @@ public class MainClass {
 		}
 		
 		// run the mlm
-		runMlm(mlm);
+		runMlm(mlm, context);
 		
 		return 0;
 	}
@@ -231,7 +253,7 @@ public class MainClass {
 				File assumed = new File(fileToCompile.getParentFile(), assumedName);
 				if (firstFile) {
 					System.err.println("warning: File " + fileToCompile.getPath() 
-							+ " compiled, but no output file given. Assuming "
+							+ " compiled, but no output filename given. Assuming "
 							+ assumed.getPath()
 							+ " as output file.");
 				} else {
@@ -308,6 +330,25 @@ public class MainClass {
 		}
 	}
 	
+	private int runMlmDaemon(List<File> inputFiles) {
+		if (inputFiles.size() < 1) {
+			System.err.println("No MLM file specified");
+			return 1;
+		}
+		List<MedicalLogicModule> mlms = new LinkedList<MedicalLogicModule>();
+		for (File file : inputFiles) {
+			MedicalLogicModule mlm = getMlmFromFile(file);
+			if (mlm == null) {
+				return 1;
+			}
+			mlms.add(mlm);
+		}
+		ExecutionContext context = createExecutionContext();
+		ArdenValue[] arguments = getArguments();
+		new MlmDaemon(mlms, context, arguments).run();
+		return 0;
+	}
+	
 	private int handleCommandLineArgs(String[] args) {
 		// parse command line using jewelCli:		
 		try {
@@ -376,8 +417,9 @@ public class MainClass {
 			}
 		} else if (options.getCompile()) {
 			return compileInputFiles(inputFiles);
+		} else if (options.getDaemon()) {
+			return runMlmDaemon(inputFiles);
 		} else {
-			// TODO: handle other options
 			System.err.println("You should specify -r to run the files or "
 					+ "-c to compile the files.");
 			System.err.println("Specifying files without telling what to " 

@@ -34,7 +34,6 @@ import java.sql.SQLException;
 import java.util.Date;
 
 import arden.CommandLineOptions;
-import arden.runtime.ArdenRunnable;
 import arden.runtime.ArdenString;
 import arden.runtime.ArdenTime;
 import arden.runtime.ArdenValue;
@@ -100,19 +99,7 @@ public class JDBCExecutionContext extends StdIOExecutionContext {
 	
 	public DatabaseQuery createQuery(String mapping) {		
 		return new JDBCQuery(mapping, connection);
-	}
-	
-	public ArdenRunnable findModule(String name, String institution) {
-		throw new RuntimeException("findModule not implemented");
-	}
-	
-	public ArdenRunnable findInterface(String mapping) {
-		throw new RuntimeException("findInterface not implemented");
-	}
-	
-	public void callWithDelay(ArdenRunnable mlm, ArdenValue[] arguments, ArdenValue delay) {
-		throw new RuntimeException("callWithDelay not implemented");
-	}
+	}	
 	
 	private ArdenTime eventtime = new ArdenTime(new Date());
 	
