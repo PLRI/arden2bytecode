@@ -143,7 +143,8 @@ final class FormattingCompiler {
 			// to be output as a character.
 			context.writer.invokeStatic(Compiler.getRuntimeHelper("formatCharacter", ArdenValue.class));
 			break;
-		case 's':
+		case 'S': // string as string with length limit
+		case 's': // lowercase not specified in A5.1
 			context.writer.invokeStatic(ExpressionCompiler.getMethod("toString", ArdenValue.class));
 			if (spec.precision > 0) {
 				context.writer.loadIntegerConstant(spec.precision);
@@ -151,10 +152,18 @@ final class FormattingCompiler {
 						.invokeStatic(Compiler.getRuntimeHelper("limitStringLength", String.class, int.class));
 			}
 			break;
-		case 'd':
-		case 'i':
-		case 'u':
-		case 'f':
+		case 'D': // signed decimal integer
+		case 'd': // lowercase not specified in A5.1
+		case 'I': // signed decimal integer
+		case 'i': // lowercase not specified in A5.1
+		case 'U': // unsigned decimal integer
+		case 'u': // lowercase not specified in A5.1
+        case 'e':
+        case 'E':
+		case 'F': // number - signed value [-]dddd.dddd
+		case 'f': // lowercase not specified in A5.1
+		case 'g': // TODO: implement %g: double use %f or %e, whichever is more compact
+        case 'G': // TODO: implement %G: identical to %e, except E, rather then e
 			FieldReference formatField = context.codeGenerator.createStaticFinalField(DecimalFormat.class);
 			MethodWriter init = context.codeGenerator.getStaticInitializer();
 			// format = new DecimalFormat();
@@ -173,7 +182,13 @@ final class FormattingCompiler {
 			init.loadIntegerConstant(0);
 			init.invokeInstance(DecimalFormat.class.getMethod("setGroupingUsed", boolean.class));
 
-			if (spec.type == 'd' || spec.type == 'i' || spec.type == 'u') {
+            switch (spec.type) {
+            case 'd':
+            case 'D':
+            case 'i':
+            case 'I':
+            case 'u':
+            case 'U':
 				// format.setMaximumFractionDigits(0);
 				init.loadStaticField(formatField);
 				init.loadIntegerConstant(0);
@@ -184,18 +199,33 @@ final class FormattingCompiler {
 					init.loadIntegerConstant(spec.precision);
 					init.invokeInstance(DecimalFormat.class.getMethod("setMinimumIntegerDigits", int.class));
 				}
-			} else if (spec.type == 'f') {
-				init.loadStaticField(formatField);
-				init.loadIntegerConstant(spec.precision < 0 ? 6 : spec.precision);
-				init.invokeInstance(DecimalFormat.class.getMethod("setMaximumFractionDigits", int.class));
+                break;
+            case 'e':
+            case 'E':
+            case 'f':
+            case 'F':
+            case 'g': // TODO: use %e, when more compact
+            case 'G': // TODO: use %E, when more compact
+                if (spec.type == 'e' || spec.type == 'E') {
+                    init.loadStaticField(formatField);
+                    init.loadStringConstant("0.######E000");
+                    init.invokeInstance(DecimalFormat.class.getMethod("applyPattern", String.class));
+                }
+                init.loadStaticField(formatField);
+                init.loadIntegerConstant(spec.precision < 0 ? 6 : spec.precision);
+                init.invokeInstance(DecimalFormat.class.getMethod("setMaximumFractionDigits", int.class));
 
-				init.loadStaticField(formatField);
-				init.loadIntegerConstant(spec.precision < 0 ? 6 : spec.precision);
-				init.invokeInstance(DecimalFormat.class.getMethod("setMinimumFractionDigits", int.class));
+                init.loadStaticField(formatField);
+                init.loadIntegerConstant(spec.precision < 0 ? 6 : spec.precision);
+                init.invokeInstance(DecimalFormat.class.getMethod("setMinimumFractionDigits", int.class));
 
-				if (spec.numberSignFlag) {
-					// TODO: implement this
-				}
+                if (spec.numberSignFlag) {
+                        // TODO: implement this
+                }
+                
+                break;
+            default:
+                throw new RuntimeException("Format specifier %" + spec.type + " not implemented");
 			}
 
 			if (spec.plusFlag) {
@@ -211,16 +241,61 @@ final class FormattingCompiler {
 			context.writer.loadStaticField(formatField);
 			context.writer
 					.invokeStatic(Compiler.getRuntimeHelper("formatNumber", ArdenValue.class, NumberFormat.class));
+            // add the required '+' to the exponent
+            if (spec.type == 'e' || spec.type == 'g'
+                || spec.type == 'E' || spec.type == 'G') {
+                // resultString.replace("E", "E+")
+				context.writer.loadStringConstant("E");
+				context.writer.loadStringConstant("E+");
+                context.writer.invokeInstance(String.class.getMethod("replace", CharSequence.class, CharSequence.class));
+                // resultString.replace("+-", "-")
+				context.writer.loadStringConstant("+-");
+				context.writer.loadStringConstant("-");
+                context.writer.invokeInstance(String.class.getMethod("replace", CharSequence.class, CharSequence.class));
+                // make exponent lower case if desired
+                if (spec.type == 'e' || spec.type == 'g') {
+                    context.writer.invokeInstance(String.class.getMethod("toLowerCase"));
+                }
+            }
 			break;
-		case 't':
+		case 'T': // time is based on environment settings and the precision value
+		case 't': // lowercase not specified in A5.1
 			context.writer.loadIntegerConstant(spec.precision < 0 ? 5 : spec.precision);
 			context.writer.invokeStatic(Compiler.getRuntimeHelper("formatTime", ArdenValue.class, int.class));
 			break;
-		/*
-		 * case 'o': case 'x': case 'X': case 'e': throw new
-		 * RuntimeException("not implemented"); case 'E': // TODO: implement %E
-		 * break; case 'g': case 'G': // TODO: implement %g break;
-		 */
+		
+        case 'x': // %x: number - unsigned hexadecimal integer using "abcdef"
+        case 'X': // %X: number - unsigned hexadecimal integer using "ABCDEF"
+			FieldReference formatField2 = context.codeGenerator.createStaticFinalField(HexadecimalFormat.class);
+			MethodWriter init2 = context.codeGenerator.getStaticInitializer();
+			// format = new HexadecimalFormat();
+			init2.newObject(HexadecimalFormat.class);
+			init2.dup();
+			init2.invokeConstructor(HexadecimalFormat.class.getConstructor());
+			init2.dup();
+			init2.storeStaticField(formatField2);
+            if (spec.type == 'X') {
+                init2.invokeInstance(HexadecimalFormat.class.getMethod("useUpperCase"));
+            }
+
+			context.writer.loadStaticField(formatField2);
+			context.writer
+					.invokeStatic(Compiler.getRuntimeHelper("formatNumber", ArdenValue.class, NumberFormat.class));
+			break;
+		case 'O': // %O: number - unsigned octal integer
+		case 'o': // lowercase not specified in A5.1
+			FieldReference formatField3 = context.codeGenerator.createStaticFinalField(OctalFormat.class);
+			MethodWriter init3 = context.codeGenerator.getStaticInitializer();
+			// format = new OctalFormat();
+			init3.newObject(OctalFormat.class);
+			init3.dup();
+			init3.invokeConstructor(OctalFormat.class.getConstructor());
+			init3.storeStaticField(formatField3);
+
+			context.writer.loadStaticField(formatField3);
+			context.writer
+					.invokeStatic(Compiler.getRuntimeHelper("formatNumber", ArdenValue.class, NumberFormat.class));
+			break;
 		default:
 			throw new RuntimeCompilerException(locationForParseErrors, "Unknown formatting specification: '%"
 					+ spec.type + "'");

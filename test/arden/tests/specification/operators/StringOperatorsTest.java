@@ -40,6 +40,8 @@ public class StringOperatorsTest extends SpecificationTest {
 		assertEvaluatesTo("(\"a\", \"b\", \"c\") formatted with \"%s ~ %s ~ %s\"", "\"a ~ b ~ c\"");
 		assertEvaluatesTo("(97, 98, 99) formatted with \"%c, %c, %c\"", "\"a, b, c\"");
 		assertEvaluatesTo("5.1234 formatted with \"%3.5f\"", "\"5.12340\"");
+		assertEvaluatesTo("-5.1234 formatted with \"%3.3f\"", "\"-5.123\"");
+		assertEvaluatesTo("-321.1234 formatted with \"%3.3f\"", "\"-321.123\"");
 		assertEvaluatesTo("12345678 formatted with \"%I\"", "\"12345678\"");
 		assertEvaluatesTo("1 formatted with \"%3d%%\"", "\"  1%\"");
 		assertEvaluatesTo("1 formatted with \"%03d%%\"", "\"001%\"");
@@ -47,11 +49,15 @@ public class StringOperatorsTest extends SpecificationTest {
 		assertEvaluatesTo("1 formatted with \"%-3I\"", "\"1  \"");
 		assertEvaluatesTo("1 formatted with \"%-+3I\"", "\"+1 \"");
 		assertEvaluatesTo("\"abc\" formatted with \"%3.2s\"", "\" ab\"");
-		assertEvaluatesTo("5.1234 formatted with \"%.4e\"", "\"5.1234e+000\"");
-		assertEvaluatesTo("5.1234 formatted with \"%.4g\"", "\"5.123\"");
+        assertEvaluatesTo("-0.0012345 formatted with \"%.3e\"", "\"-1.234e-003\"");
+        assertEvaluatesTo("-0.0012345 formatted with \"%.3E\"", "\"-1.234E-003\"");
+        assertEvaluatesTo("5.1234 formatted with \"%.4e\"", "\"5.1234e+000\"");
+		assertEvaluatesTo("5.1234 formatted with \"%.3g\"", "\"5.123\"");
+		assertEvaluatesTo("5.1234 formatted with \"%.4g\"", "\"5.1234\"");
 		assertEvaluatesTo("8 formatted with \"%o\"", "\"10\"");
 		assertEvaluatesTo("8 formatted with \"%u\"", "\"8\"");
 		assertEvaluatesTo("63 formatted with \"%x\"", "\"3f\"");
+		assertEvaluatesTo("63 formatted with \"%X\"", "\"3F\"");
 		assertInvalidExpression("8 formatted with \"%n\"");
 		assertInvalidExpression("8 formatted with \"%p\"");
 	}
